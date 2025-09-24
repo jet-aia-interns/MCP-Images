@@ -10,6 +10,24 @@ from mcp_image import mcp  # Import the FastMCP instance from mcp_image
 
 app = FastAPI(title="Image MCP Server API")
 
+@app.get("/mcp/manifest.json")
+async def manifest():
+    return {
+        "name": "image-mcp-server",
+        "description": "Provides image search, upload, and download tools",
+        "version": "1.0.0",
+        "tools": [
+            {"name": "search_google_images", "description": "Search for images on Google"},
+            {"name": "save_images_to_azure", "description": "Save found images to Azure Blob Storage"},
+            {"name": "upload_single_image_to_azure", "description": "Upload a single image to Azure Blob Storage"},
+            {"name": "download_image_from_azure", "description": "Download an image from Azure Blob Storage"}
+        ],
+        "auth": {
+            "type": "none"
+        }
+    }
+
+
 @app.get("/")
 async def root():
     return {"message": "Image MCP Server is running", "tools": ["search_google_images", "save_images_to_azure", "upload_single_image_to_azure", "download_image_from_azure"]}   
