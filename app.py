@@ -36,11 +36,11 @@ def list_tools():
     try:
         # Get tools from the MCP server
         tools = []
-        for tool_name, tool_info in mcp._tools.items():
+        for tool_name, tool in mcp._tool_manager._tools.items():
             tools.append({
-                "name": tool_name,
-                "description": tool_info.get("description", ""),
-                "parameters": tool_info.get("parameters", {})
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters if hasattr(tool, 'parameters') else {}
             })
         return jsonify({"tools": tools})
     except Exception as e:
@@ -62,7 +62,7 @@ def call_tool():
             return jsonify({"error": "tool_name is required"}), 400
         
         # Check if tool exists
-        if tool_name not in mcp._tools:
+        if tool_name not in mcp._tool_manager._tools:
             return jsonify({"error": f"Tool '{tool_name}' not found"}), 404
         
         # Execute the tool
@@ -75,13 +75,13 @@ def call_tool():
                     pass
             
             context = MockContext()
-            tool_func = mcp._tools[tool_name]["func"]
+            tool = mcp._tool_manager._tools[tool_name]
             
             # Execute the tool function
-            if asyncio.iscoroutinefunction(tool_func):
-                result = loop.run_until_complete(tool_func(context, **arguments))
+            if tool.is_async:
+                result = loop.run_until_complete(tool.fn(ctx=context, **arguments))
             else:
-                result = tool_func(context, **arguments)
+                result = tool.fn(ctx=context, **arguments)
             
             return jsonify({"result": result})
         
@@ -103,9 +103,9 @@ def search_images():
         if not query:
             return jsonify({"error": "query parameter is required"}), 400
         
-        # Call the search_images tool
-        return call_tool_internal('search_images', {
-            'query': query,
+        # Call the search_google_images tool
+        return call_tool_internal('search_google_images', {
+            'search_query': query,
             'max_results': max_results
         })
     
@@ -124,10 +124,10 @@ def save_image():
         if not image_url:
             return jsonify({"error": "image_url parameter is required"}), 400
         
-        # Call the save_image tool
-        return call_tool_internal('save_image', {
-            'image_url': image_url,
-            'filename': filename
+        # Call the upload_single_image_to_azure tool
+        return call_tool_internal('upload_single_image_to_azure', {
+            'image_source': image_url,
+            'blob_name': filename if filename else None
         })
     
     except Exception as e:
@@ -137,7 +137,7 @@ def save_image():
 def call_tool_internal(tool_name, arguments):
     """Internal helper to call MCP tools"""
     try:
-        if tool_name not in mcp._tools:
+        if tool_name not in mcp._tool_manager._tools:
             return jsonify({"error": f"Tool '{tool_name}' not found"}), 404
         
         # Execute the tool
@@ -149,12 +149,12 @@ def call_tool_internal(tool_name, arguments):
                     pass
             
             context = MockContext()
-            tool_func = mcp._tools[tool_name]["func"]
+            tool = mcp._tool_manager._tools[tool_name]
             
-            if asyncio.iscoroutinefunction(tool_func):
-                result = loop.run_until_complete(tool_func(context, **arguments))
+            if tool.is_async:
+                result = loop.run_until_complete(tool.fn(ctx=context, **arguments))
             else:
-                result = tool_func(context, **arguments)
+                result = tool.fn(ctx=context, **arguments)
             
             return jsonify({"result": result})
         
