@@ -7,8 +7,17 @@ import uvicorn
 from mcp_image import mcp  # Import the FastMCP instance from mcp_image
 
 #Defining some end points to test
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Image MCP Server API")
+
+ 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["https://claude.ai"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/mcp/manifest.json")
 async def manifest():
@@ -22,8 +31,9 @@ async def manifest():
             {"name": "upload_single_image_to_azure", "description": "Upload a single image to Azure Blob Storage"},
             {"name": "download_image_from_azure", "description": "Download an image from Azure Blob Storage"}
         ],
-        "auth": {
-            "type": "none"
+        "auth": {"type": "none"},
+        "endpoints": {
+            "sse": "https://image-mcp-server-fhf0bzdxdnced7fj.australiaeast-01.azurewebsites.net/mcp/sse/"
         }
     }
 
@@ -82,4 +92,4 @@ if __name__ == "__main__":
     # Use 0.0.0.0 for Azure deployment, port from environment variable or default to 8000
     import os
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
