@@ -93,29 +93,41 @@
 #     import os
 #     port = int(os.environ.get("PORT", 8000))
 #     uvicorn.run(app, host="0.0.0.0", port=port)
-
-from fastapi import FastAPI
-from mcp.server.sse import SseServerTransport
-from mcp.server.fastmcp import FastMCP
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
-from starlette.responses import Response
-from starlette.requests import Request
-import uvicorn
-from mcp_image import mcp  # Import the FastMCP instance from mcp_image
-
-#Defining some end points to test
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from mcp.server.sse import SseServerTransport
+import uvicorn
+import os
+
+# Import your MCP instance
+try:
+    from mcp_image import mcp
+except ImportError:
+    # Fallback if mcp_image import fails
+    mcp = None
+    print("Warning: Could not import mcp_image module")
 
 app = FastAPI(title="Image MCP Server API")
 
- 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["https://claude.ai"]
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Image MCP Server is running", 
+        "status": "healthy",
+        "tools": ["search_google_images", "save_images_to_azure", "upload_single_image_to_azure", "download_image_from_azure"]
+    }
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "image-mcp-server"}
 
 @app.get("/mcp/manifest.json")
 async def manifest():
@@ -135,44 +147,35 @@ async def manifest():
         }
     }
 
+# Only set up MCP SSE if the mcp module loaded successfully
+if mcp is not None:
+    # Create SSE transport
+    sse_transport = SseServerTransport("/mcp/messages/")
 
-@app.get("/")
-async def root():
-    return {"message": "Image MCP Server is running", "tools": ["search_google_images", "save_images_to_azure", "upload_single_image_to_azure", "download_image_from_azure"]}   
+    @app.get("/mcp/sse")
+    async def handle_mcp_sse(request: Request):
+        """Handle SSE connections for MCP communication"""
+        try:
+            async with sse_transport.connect_sse(request.scope, request.receive, request._send) as streams:
+                await mcp._mcp_server.run(
+                    streams[0], streams[1], mcp._mcp_server.create_initialization_options()
+                )
+            return Response()
+        except Exception as e:
+            print(f"SSE handler error: {e}")
+            return Response(status_code=500)
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"} 
+    # Mount the message handler
+    try:
+        app.mount("/mcp/messages/", sse_transport.handle_post_message)
+    except Exception as e:
+        print(f"Failed to mount message handler: {e}")
+else:
+    @app.get("/mcp/sse")
+    async def handle_mcp_sse_fallback():
+        return {"error": "MCP module not available"}
 
-##############################################
-
-# Create SSE transport for MCP communication
-sse_transport = SseServerTransport("/mcp/messages/")
-
-async def handle_mcp_sse(request: Request):
-    """Handle SSE connections for MCP communication"""
-    async with sse_transport.connect_sse(request.scope, request.receive, request._send) as streams:
-        await mcp._mcp_server.run(
-            streams[0], streams[1], mcp._mcp_server.create_initialization_options()
-        )
-    return Response()
-
-# Mount the MCP SSE endpoint and message handler
-app.add_api_route("/mcp/sse", handle_mcp_sse, methods=["GET"])
-app.mount("/mcp/messages/", sse_transport.handle_post_message)
-
-###########################################################################
-
-# Image tools are defined in mcp_image.py and include:
-# - search_google_images: Search for images on Google Images
-# - save_images_to_azure: Save found images to Azure Blob Storage  
-# - upload_single_image_to_azure: Upload a single image to Azure
-# - download_image_from_azure: Download an image from Azure Blob Storage
-
-
-# For local testing and Azure deployment
-if __name__ == "__main__":   
-    # Use 0.0.0.0 for Azure deployment, port from environment variable or default to 8000
-    import os
+# For Azure App Service deployment
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
