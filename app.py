@@ -96,9 +96,6 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mcp.server.fastmcp import FastMCP
-from starlette.requests import Request
-from starlette.responses import Response
 import uvicorn
 from mcp_image import mcp  # Import the FastMCP instance from mcp_image
 
@@ -124,16 +121,8 @@ async def root():
 async def health():
     return {"status": "ok"} 
 
-# Main MCP endpoint - this is what Claude connects to
-@app.post("/mcp-server/mcp")
-async def mcp_server(request: Request):
-    """Main MCP server endpoint for streamable-http transport"""
-    return await mcp.handle_request(request)
-
-@app.get("/mcp-server/mcp")
-async def mcp_server_get(request: Request):
-    """Handle GET requests to MCP endpoint"""
-    return await mcp.handle_request(request)
+# Mount the MCP server's FastAPI app at /mcp-server - this creates the /mcp-server/mcp endpoint
+app.mount("/mcp-server", mcp.app)
 
 # Optional: Keep manifest endpoint for reference
 @app.get("/mcp/manifest.json")
